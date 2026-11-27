@@ -3,7 +3,7 @@ import * as E from './engine.js';
 import * as Online from './online.js';
 import { sfx, unlockAudio, setSoundEnabled, haptic } from './sound.js';
 
-const VERSION = '1.1.2';
+const VERSION = '1.1.3';
 // Player colours, picked to stay distinct from the eight route colours
 const PLAYER_COLORS = [
   { id: 'coral', hex: '#ff5a47', name: 'Coral' },
@@ -50,7 +50,17 @@ const STATION_PATH = 'M-6 4 V-2 L0 -7.5 L6 -2 V4 Z';
 
 document.addEventListener('pointerdown', unlockAudio, { passive: true });
 
-function stopWatch() { S.unsub?.(); S.unsub = null; }
+function stopWatch() {
+  S.unsub?.(); S.unsub = null;
+  if (S.presenceTimer) {
+    clearInterval(S.presenceTimer); S.presenceTimer = null;
+    document.removeEventListener('visibilitychange', S.onVis);
+    Online.setPresence(S.code, false);
+  }
+}
+
+const AWAY_MS = 150000;
+const isHere = (d, uid) => !!(d?.presence?.[uid] && Date.now() - d.presence[uid] < AWAY_MS);
 
 // ======================================================================
 // Home
@@ -544,7 +554,7 @@ async function showMyGames() {
   const uid = Online.myUid();
   const hidden = store.get(LS.hidden, []);
   list = list.filter(g => !hidden.includes(g.code));
-  const label = g => g.status === 'lobby' ? 'In waiting room' : g.status === 'over' ? 'Finished'
+  const label = g => g.status === 'lobby' ? 'In waiting room' : g.status === 'over' ? 'Finished' : g.status === 'ended' ? 'Ended'
     : g.curUid === uid ? 'Your turn' : `${esc(g.players.find(p => p.uid === g.curUid)?.name || '…')}’s turn`;
   app.innerHTML = `
     <div class="history">
@@ -597,8 +607,19 @@ function openOnline(code, first = null) {
     if (err) { toast(Online.explain(err)); return; }
     if (!d) { toast('This game no longer exists'); showHome(); return; }
     if (d.status === 'lobby') { showLobby(code); return; }
+    const prevDoc = S.doc;
     S.doc = d;
-    if (d.version <= S.version) { maybeRematchButton(); return; }
+    if (d.status === 'ended') { showEnded(d); return; }
+    // Tell me when someone leaves or comes back
+    if (prevDoc && G && S.started) {
+      for (const p of G.players) {
+        if (p.uid === Online.myUid()) continue;
+        const was = isHere(prevDoc, p.uid), now = isHere(d, p.uid);
+        if (was && !now) toast(`${p.name} left the game — they can continue later`);
+        if (!was && now) toast(`${p.name} is back`);
+      }
+    }
+    if (d.version <= S.version) { maybeRematchButton(); if (S.started) { renderPlayers(); renderStatus(); } return; }
     const prev = G;
     G = E.migrate(JSON.parse(d.state));
     const firstLoad = S.version < 0;
@@ -622,6 +643,26 @@ function openOnline(code, first = null) {
   S.resync = async () => { try { const d = await Online.getGame(code); if (S === mySession) onDoc(d); } catch { /* offline */ } };
   const unsub = Online.watch(code, (d, err) => { if (S === mySession) onDoc(d, err); });
   S.unsub = unsub;
+  // presence: say I'm here, refresh every minute, and say I left when the app is hidden
+  Online.setPresence(code, true);
+  S.presenceTimer = setInterval(() => { if (!document.hidden) Online.setPresence(code, true); if (app.className === 'screen-game' && G) renderPlayers(); }, 60000);
+  S.onVis = () => Online.setPresence(code, !document.hidden);
+  document.addEventListener('visibilitychange', S.onVis);
+}
+
+function showEnded(d) {
+  const who = d.players.find(p => p.uid === d.endedBy);
+  const me = d.endedBy === Online.myUid();
+  openOverlay(`
+    <div class="handoff">
+      <p class="kicker">Game ended</p>
+      <h2>${me ? 'You ended the game' : `${esc(who?.name || 'A player')} ended the game`}</h2>
+      <p class="sub">No scores were recorded.</p>
+      <button class="btn primary big" data-a="home">Main menu</button>
+    </div>`, {
+    cls: 'center', dismiss: false, kind: 'ended',
+    onClick: e => { if (e.target.closest('[data-a="home"]')) showHome(); },
+  });
 }
 
 function playRemote(events, prev) {
@@ -989,8 +1030,8 @@ function renderAll() {
 
 function renderPlayers() {
   $('#players').innerHTML = G.players.map((p, i) => `
-    <div class="pchip ${i === G.cur && !G.over ? 'active' : ''}" style="--pc:${PC[p.color]}">
-      <div class="pname"><span class="dot"></span>${esc(p.name)}${online() && i === S.mySeat ? ' <small>(you)</small>' : ''}</div>
+    <div class="pchip ${i === G.cur && !G.over && G.phase !== 'setup' ? 'active' : ''}" style="--pc:${PC[p.color]}">
+      <div class="pname"><span class="dot"></span>${esc(p.name)}${online() && i === S.mySeat ? ' <small>(you)</small>' : ''}${online() && i !== S.mySeat ? `<i class="pres ${isHere(S.doc, p.uid) ? 'on' : ''}" title="${isHere(S.doc, p.uid) ? 'In the game' : 'Away'}"></i>` : ''}${G.phase === 'setup' && p.pending ? ' <small>choosing tickets…</small>' : ''}</div>
       <div class="pstats">
         <span title="Route points"><b>${p.routePts}</b> pts</span>
         <span title="Trains left">🚃${p.trains}</span>
@@ -1111,8 +1152,12 @@ function renderStatus() {
   }
   let msg;
   const mine = G.cur === ui.viewer;
-  if (G.phase === 'setup') msg = p.pending ? 'Choose your starting tickets. <button class="link" data-s="prompt">Open</button>' : 'Waiting for the others to choose their tickets…';
-  else if (!mine) msg = `Waiting for <b style="color:${PC[curP.color]}">${esc(curP.name)}</b>${G.phase === 'tunnel' ? ' (digging a tunnel)' : ''}…`;
+  const away = q => online() && !isHere(S.doc, q.uid) ? ` <span class="awaynote">(away — they’ll see it when they open the game)</span>` : '';
+  if (G.phase === 'setup') {
+    const choosing = G.players.filter(q => q.pending && q !== p);
+    msg = p.pending ? 'Choose your starting tickets. <button class="link" data-s="prompt">Open</button>'
+      : `Not started yet: waiting for ${choosing.map(q => `<b style="color:${PC[q.color]}">${esc(q.name)}</b>${away(q)}`).join(', ')} to choose starting tickets. ${esc(curP.name)} goes first.`;
+  } else if (!mine) msg = `Waiting for <b style="color:${PC[curP.color]}">${esc(curP.name)}</b>${G.phase === 'tunnel' ? ' (digging a tunnel)' : ''}…${away(curP)}`;
   else if (G.phase === 'tickets') msg = 'Choose which destination tickets to keep. <button class="link" data-s="prompt">Open</button>';
   else if (G.phase === 'tunnel') msg = 'Tunnel! Pay the extra cards or give up. <button class="link" data-s="prompt">Open</button>';
   else if (G.drawn === 1) msg = E.mustEndTurnManually(G)
@@ -1542,7 +1587,8 @@ function openMenu() {
       <button class="btn" data-m="settings">Settings</button>
       <button class="btn" data-m="history">Score history</button>
       ${inGame && online() ? `<button class="btn" data-m="mygames">My online games</button>
-        <button class="btn" data-m="home">Exit to main menu</button>` : ''}
+        <button class="btn" data-m="home">Exit to main menu<small>The game stays open; continue any time</small></button>
+        ${G.over ? '' : `<button class="btn danger" data-m="endonline">End game for everyone</button>`}` : ''}
       ${inGame && !online() ? `<button class="btn" data-m="home">Save &amp; exit to menu</button>
       <button class="btn danger" data-m="abandon">Abandon game</button>` : ''}
     </div>`, {
@@ -1558,6 +1604,11 @@ function openMenu() {
       if (m === 'history') showHistory(true);
       if (m === 'mygames') showMyGames();
       if (m === 'home') { save(); showHome(); }
+      if (m === 'endonline') {
+        if (!btn.dataset.confirm) { btn.dataset.confirm = '1'; btn.textContent = 'Tap again to end it for all players (no scores)'; return; }
+        Online.endGame(S.code).catch(err => toast(Online.explain(err)));
+        return;
+      }
       if (m === 'abandon') {
         if (btn.dataset.confirm) { store.del(LS.game); G = null; showHome(); }
         else { btn.dataset.confirm = '1'; btn.textContent = 'Tap again to abandon (no score saved)'; }

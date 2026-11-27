@@ -110,6 +110,7 @@ async function firebaseBackend(cfg) {
       return r.docs.map(d => d.data());
     },
     async remove(code) { await fsM.deleteDoc(ref(code)); },
+    async patch(code, fields) { await fsM.updateDoc(ref(code), fields); },
   };
 }
 
@@ -129,6 +130,7 @@ export function explain(e) {
   if (code === 'noconfig') return 'Online play isn’t set up on this phone yet.';
   if (code === 'stale') return 'The board changed — try again.';
   if (code === 'missing') return 'That game doesn’t exist (any more).';
+  if (code === 'ended') return 'This game was ended.';
   const tag = ` (${code})`;
   // Authentication problems (checked first: their codes also contain words like "not-found")
   if (/api-key-not-valid|invalid-api-key/.test(code)) return 'The API key looks wrong — paste the config again.' + tag;
@@ -166,6 +168,7 @@ export async function createGame({ map, opts, me }) {
       code, status: 'lobby', hostUid: b.uid, map, opts,
       players: [{ uid: b.uid, name: me.name, color: me.color }], uids: [b.uid],
       state: null, version: 0, lastEvents: null, rematch: null, curUid: null,
+      presence: {}, endedBy: null,
       createdAt: Date.now(), updatedAt: Date.now(),
     });
     try { await b.create(code, data); return code; } catch (e) { if (e.message !== 'exists') throw e; }
@@ -249,6 +252,7 @@ export async function apply(code, fn, bySeat, { anyTurn = false } = {}) {
   const b = await connect();
   const out = await b.transact(code, d => {
     const s = E.migrate(JSON.parse(d.state));
+    if (d.status === 'ended') throw new Error('ended');
     if (!anyTurn && (s.cur !== bySeat || s.over)) throw new Error('stale');
     const res = fn(s);
     if (!res.ok) return { data: d, res, state: null };
@@ -262,6 +266,24 @@ export async function apply(code, fn, bySeat, { anyTurn = false } = {}) {
     return { data: d, res, state: s, version: d.version };
   });
   return out;
+}
+
+// Who has the game open: a timestamp per player, 0 when they leave
+export async function setPresence(code, here) {
+  const b = await connect();
+  try { await b.patch(code, { [`presence.${b.uid}`]: here ? Date.now() : 0 }); } catch { /* offline or game gone */ }
+}
+
+// End an online game for everyone (no scores recorded)
+export async function endGame(code) {
+  const b = await connect();
+  return b.transact(code, d => {
+    d.status = 'ended';
+    d.endedBy = b.uid;
+    d.curUid = null;
+    d.updatedAt = Date.now();
+    return { data: d };
+  });
 }
 
 export function watch(code, cb) {

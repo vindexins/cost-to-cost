@@ -1,4 +1,4 @@
-# Coast to Coast v1.1.2
+# Coast to Coast v1.1.3
 
 A railway route-building board game for 2–5 players. Choose the **USA** or **Europe** map and play
 **on one phone** (pass-and-play) or **online**, with each player on their own phone.
