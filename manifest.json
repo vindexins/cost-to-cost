@@ -1,7 +1,7 @@
 {
   "name": "Coast to Coast",
   "short_name": "Coast to Coast",
-  "description": "Railway route-building board game for 2–5 players on one device.",
+  "description": "Railway route-building board game for 2–5 players: USA and Europe, on one phone or online.",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",
