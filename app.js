@@ -3,7 +3,7 @@ import * as E from './engine.js';
 import * as Online from './online.js';
 import { sfx, unlockAudio, setSoundEnabled, haptic } from './sound.js';
 
-const VERSION = '1.1.0';
+const VERSION = '1.1.2';
 // Player colours, picked to stay distinct from the eight route colours
 const PLAYER_COLORS = [
   { id: 'coral', hex: '#ff5a47', name: 'Coral' },
@@ -327,13 +327,14 @@ function showOnlineSetup() {
       <details class="card-section howto">
         <summary><b>How to set up Firebase (once, ~5 min)</b></summary>
         <ol>
-          <li>Go to <b>console.firebase.google.com</b>, sign in with a Google account, and <b>Create a project</b> (analytics off).</li>
-          <li><b>Build → Authentication → Get started → Sign-in method → Anonymous → Enable</b>.</li>
-          <li><b>Build → Firestore Database → Create database</b>, choose a location, start in <b>production mode</b>.</li>
-          <li>In Firestore open the <b>Rules</b> tab, replace everything with the rules below and <b>Publish</b>.</li>
-          <li><b>Project settings (⚙︎) → Your apps → Web (&lt;/&gt;)</b>, register an app (no hosting), copy the <code>firebaseConfig</code> block and paste it above.</li>
-          <li>Tap <b>Copy invite</b> and send it to your partner.</li>
+          <li>Open <b>console.firebase.google.com</b> and create a project (or open yours).</li>
+          <li>Left menu <b>Security → Authentication</b> → <b>Sign-in method</b> tab → enable <b>Anonymous</b>.</li>
+          <li>Left menu <b>Databases &amp; Storage → Firestore</b> → <b>Create database</b> → pick a location → <b>Production mode</b> → <b>Create</b>.</li>
+          <li>Still in Firestore, open the <b>Rules</b> tab, replace everything with the rules below and click <b>Publish</b>.</li>
+          <li>Get the config: on the project overview page click the <b>Web</b> icon (or <b>Add app</b> → Web), enter a nickname, <b>Register app</b>, copy the <code>firebaseConfig</code> block. Already registered? <b>Project settings → Your apps</b> → your web app → <b>Firebase SDK snippet → Config</b>.</li>
+          <li>Paste it above and tap <b>Save</b>, then <b>Copy invite</b> and send it to your partner.</li>
         </ol>
+        <p class="hint">Database not called “(default)”? Add a line <code>databaseId: "your-id"</code> to the pasted config.</p>
         <pre class="rules-code" id="rulesCode">${esc(Online.RULES)}</pre>
         <button class="btn" data-a="copyrules">Copy rules</button>
       </details>

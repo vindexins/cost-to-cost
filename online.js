@@ -39,7 +39,7 @@ export function parseConfigText(text) {
     let m;
     while ((m = re.exec(text))) cfg[m[1]] = m[2];
   }
-  const keep = ['apiKey', 'authDomain', 'projectId', 'storageBucket', 'messagingSenderId', 'appId'];
+  const keep = ['apiKey', 'authDomain', 'projectId', 'storageBucket', 'messagingSenderId', 'appId', 'databaseId'];
   cfg = Object.fromEntries(keep.filter(k => cfg[k]).map(k => [k, String(cfg[k])]));
   check(cfg);
   return { config: cfg, code: null };
@@ -75,11 +75,12 @@ async function firebaseBackend(cfg) {
     import(SDK + 'firebase-firestore.js'),
   ]);
   const name = 'c2c-' + cfg.projectId;
-  const app = appM.getApps().find(a => a.name === name) || appM.initializeApp(cfg, name);
+  const { databaseId, ...appCfg } = cfg;
+  const app = appM.getApps().find(a => a.name === name) || appM.initializeApp(appCfg, name);
   const auth = authM.getAuth(app);
   await auth.authStateReady();
   if (!auth.currentUser) await authM.signInAnonymously(auth);
-  const db = fsM.getFirestore(app);
+  const db = cfg.databaseId ? fsM.getFirestore(app, cfg.databaseId) : fsM.getFirestore(app);
   const ref = code => fsM.doc(db, 'games', code);
   return {
     uid: auth.currentUser.uid,
@@ -126,14 +127,21 @@ export function myUid() { return backend?.uid || null; }
 export function explain(e) {
   const code = e?.code || e?.message || String(e);
   if (code === 'noconfig') return 'Online play isn’t set up on this phone yet.';
-  if (/operation-not-allowed|admin-restricted/.test(code)) return 'Turn on Anonymous sign-in: Firebase console → Authentication → Sign-in method → Anonymous.';
-  if (/api-key-not-valid|invalid-api-key/.test(code)) return 'The API key looks wrong — paste the config again.';
-  if (/permission-denied|insufficient permissions/i.test(code)) return 'Firestore refused access. Paste the security rules from Online setup → How to set up.';
-  if (/not-found|NOT_FOUND|database.*does not exist/i.test(code)) return 'Firestore database not found. Create it: Firebase console → Firestore Database → Create database.';
-  if (/unavailable|network|Failed to fetch|offline/i.test(code)) return 'Can’t reach Firebase — check your internet connection.';
   if (code === 'stale') return 'The board changed — try again.';
   if (code === 'missing') return 'That game doesn’t exist (any more).';
-  return 'Online error: ' + code;
+  const tag = ` (${code})`;
+  // Authentication problems (checked first: their codes also contain words like "not-found")
+  if (/api-key-not-valid|invalid-api-key/.test(code)) return 'The API key looks wrong — paste the config again.' + tag;
+  if (/auth\/(configuration-not-found|operation-not-allowed|admin-restricted)/.test(code) || /operation-not-allowed|admin-restricted/.test(code))
+    return 'Turn on sign-in: Firebase console → Security → Authentication → Sign-in method tab → enable Anonymous.' + tag;
+  if (/auth\/network/.test(code)) return 'Can’t reach Firebase — check your internet connection.' + tag;
+  if (/^auth\//.test(code)) return 'Firebase sign-in failed. Check Security → Authentication → Sign-in method: Anonymous must be enabled.' + tag;
+  // Firestore problems
+  if (/permission-denied|insufficient permissions/i.test(code)) return 'Firestore refused access. Paste the rules from “How to set up” into Databases & Storage → Firestore → Rules tab, then Publish.' + tag;
+  if (/not-found|NOT_FOUND|database.*does not exist/i.test(code)) return 'Firestore database not found. Create it in Databases & Storage → Firestore → Create database. If yours isn’t called “(default)”, add databaseId: "your-id" to the pasted config.' + tag;
+  if (/failed-precondition/.test(code)) return 'Firestore isn’t ready yet. Check Databases & Storage → Firestore in the console.' + tag;
+  if (/unavailable|network|Failed to fetch|offline/i.test(code)) return 'Can’t reach Firebase — check your internet connection.' + tag;
+  return 'Online error' + tag;
 }
 
 export async function test() {

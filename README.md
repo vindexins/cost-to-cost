@@ -1,4 +1,4 @@
-# Coast to Coast v1.1.0
+# Coast to Coast v1.1.2
 
 A railway route-building board game for 2–5 players. Choose the **USA** or **Europe** map and play
 **on one phone** (pass-and-play) or **online**, with each player on their own phone.
@@ -17,13 +17,16 @@ Plain HTML/CSS/JS: no build step. Installable as a PWA; local games work offline
 3. Phones pick up the update the next time the app is opened online (it may take two launches).
 
 ## Set up online play (once, ~5 minutes)
-1. Go to https://console.firebase.google.com → **Create a project** (Google Analytics off). The free Spark plan is enough.
-2. **Build → Authentication → Get started → Sign-in method → Anonymous → Enable.**
-3. **Build → Firestore Database → Create database**, choose a location, start in **production mode**.
-4. Open Firestore's **Rules** tab, replace everything with the rules below, then **Publish**.
-5. **Project settings ⚙︎ → Your apps → Web `</>`**: register an app (no hosting needed) and copy the `firebaseConfig` block.
-6. In the app, go to **Online setup**, paste the block, then tap **Save**. It should say "Connected ✓".
-7. Tap **Copy invite** and send it to your partner (iMessage/AirDrop). On their phone: **Online setup → Paste invite**.
+Menu names follow Google's current Firebase documentation.
+1. Open https://console.firebase.google.com and create a project (the free Spark plan is enough).
+2. Left menu **Security → Authentication** → **Sign-in method** tab → enable **Anonymous**.
+3. Left menu **Databases & Storage → Firestore** → **Create database** → choose a location → **Production mode** → **Create**.
+4. In Firestore open the **Rules** tab, replace everything with the rules below, click **Publish**.
+5. Get the config: on the project overview page click the **Web** icon (or **Add app** → Web), enter a nickname, **Register app**, and copy the `firebaseConfig` block.
+   Already registered? **Project settings → Your apps** → select your web app → **Firebase SDK snippet** → **Config**.
+6. In the app: **Online setup** → paste → **Save** → "Connected ✓". Then **Copy invite** and send it to your partner; on their phone **Online setup → Paste invite**.
+
+If your Firestore database isn't named "(default)", add a line `databaseId: "your-id"` to the config you paste.
 
 Your config is saved only on each phone (in the app's local storage). It is **not** in the code, so it never reaches GitHub.
 (Firebase web configs aren't secret passwords anyway. The security rules below are what protect your data.)

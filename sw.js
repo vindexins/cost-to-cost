@@ -1,5 +1,5 @@
 // Offline cache. Bump VERSION on every release so phones pick up the update.
-const VERSION = 'c2c-1.1.0';
+const VERSION = 'c2c-1.1.2';
 const FILES = ['./', 'index.html', 'styles.css', 'app.js', 'engine.js', 'data.js', 'data_eu.js', 'online.js', 'sound.js', 'manifest.json',
   'icons/icon-192.png', 'icons/icon-512.png', 'icons/apple-touch-icon.png'];
 
